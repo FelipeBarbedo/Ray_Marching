@@ -41,6 +41,7 @@ uniform vec3 u_spherePosition;
 uniform vec3 u_lightColor;
 
 float sun(vec3 p) {
+
     return length(p - u_spherePosition) - 0.4;
 }
 
@@ -83,12 +84,23 @@ float m_sphere3(vec3 p, float oa, float ob, float oc) {
     float x = cos(u_time * speed) * oa;
     float y = sin(u_time * speed) * ob;
     float z = cos(u_time * speed) * oc;
+
     return length(p - vec3(x, y, z)) - 0.2;
+}
+
+float sdBox( vec3 p, vec3 b )
+{
+  p.y += 3.0;
+  
+  vec3 q = abs(p) - b;
+  return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
 // Função para descrever a cena
 float scene(vec3 p) {
-    // Esfera 1: raio 1 no centro
+
+    float box = sdBox(p, vec3(20.0, 0.0, 20.0));
+
     float sun = sun(p);
 
     float sphere1 = m_sphere1(p, 2.0, 0.0, 2.0);
@@ -103,10 +115,20 @@ float scene(vec3 p) {
 
     float torus3 = sdTorus3(p, vec2(2.0, 0.04));
 
-    //return min(min(min(min(sun, sphere1), torus), sphere2), sphere3);
-    return min(min(min(min(min(min(sun, sphere1), torus1), torus2), sphere2), torus3), sphere3);
+    return min(min(min(min(min(min(min(box, sphere1), torus1), torus2), sphere2), torus3), sphere3), sun);
 }
 
+float shadow(vec3 ro, vec3 rd) {
+    float t = 0.02;
+    float res = 10.0;
+    for(int i=0; i<50; i++) {
+        float h = scene(ro + rd * t);
+        if(h < 0.001) return 0.0;
+        res = min(res, 1.0 * h / t);
+        t += h;
+    }
+    return res;
+}
 
 vec3 getNormal(vec3 p) {
     const float eps = 0.001;
@@ -116,19 +138,6 @@ vec3 getNormal(vec3 p) {
         scene(p + h.yxy) - scene(p - h.yxy),
         scene(p + h.yyx) - scene(p - h.yyx)
     ));
-}
-
-float shadow(vec3 ro, vec3 rd, float start, float end) {
-    float t = start;
-    float res = 1.0;
-    for (int i = 0; i < 32; i++) {
-        float h = scene(ro + rd * t);
-        if (h < 0.001) return 0.0;
-        res = min(res, 8.0 * h / t);
-        t += clamp(h, 0.02, 0.1);
-        if (t >= end) break;
-    }
-    return clamp(res, 0.0, 1.0);
 }
 
 vec3 phongLighting(vec3 p, vec3 normal, vec3 cameraPos, vec3 lightPos, vec3 lightColor) {
@@ -148,7 +157,7 @@ vec3 phongLighting(vec3 p, vec3 normal, vec3 cameraPos, vec3 lightPos, vec3 ligh
     float specStrength = pow(max(dot(normal, halfDir), 0.0), shininess);
     vec3 specular = specStrength * lightColor;
 
-    return ambient + diffuse + specular;
+    return shadow(p + normal, lightDir) * (ambient + diffuse + specular);
 }
 
 // Função de raymarching
@@ -161,16 +170,10 @@ vec3 raymarch(vec3 ro, vec3 rd) {
         if (d < 0.001) {
             vec3 normal = getNormal(p);
             // Usar a posição da sphere1 como a posição da luz
-            vec3 lightPos = u_spherePosition;
+            //vec3 lightPos = u_spherePosition;
+            vec3 lightPos = vec3(0.0, 10.0, 3.0);
             vec3 lightColor = vec3(u_lightColor.x, u_lightColor.y, u_lightColor.z);
             vec3 color = phongLighting(p, normal, ro, lightPos, lightColor);
-
-            // Verificar se a superfície atingida é a "sun"
-            isSun = (sun(p) < 0.001);
-            
-            if (isSun) {
-                color = vec3(u_lightColor.x, u_lightColor.y, u_lightColor.z);
-            }
             
             return color;
         }
@@ -212,9 +215,9 @@ void main() {
 }
 `;
 
-let cameraPosition = vec3(-2, 2, 10);
+let cameraPosition = vec3(-20, 20, 20);
 let spherePosition = vec3(0, 0, 0);
-let lightColor = vec3(1, 1, 1);
+let lightColor = vec3(1.0, 1.0, 1.0);
 
 function vec3(x, y, z) {
     return {x: x, y: y, z: z};
